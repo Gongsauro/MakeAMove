@@ -19,7 +19,7 @@ void AMeleeWeapon::BeginPlay()
 
 void AMeleeWeapon::OnHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!HasAuthority() || !bDamageBoxActive) return;
+	if (!bDamageBoxActive) return;
 	if (!OtherActor || OtherActor == GetOwner()) return;
 
 	if (AMakeAMoveCharacter* HitCharacter = Cast<AMakeAMoveCharacter>(OtherActor))
@@ -33,7 +33,16 @@ void AMeleeWeapon::OnHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent
 		{
 			if (FName* HitBone = HitCharacter->HitboxLimbNameMap.Find(LimbHitBox->GetFName()))
 			{
+				UE_LOG(LogTemp, Warning, TEXT("Hitbox %s mapped to bone %s"),
+					*LimbHitBox->GetName(),
+					*HitBone->ToString());
+
 				HitCharacter->Server_ProcessHit(*HitBone);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("Hitbox %s not found in HitboxLimbNameMap!"),
+					*LimbHitBox->GetName());
 			}
 		}
 	}	

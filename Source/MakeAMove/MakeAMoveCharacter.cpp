@@ -21,7 +21,8 @@
 #include "Engine/SkeletalMeshSocket.h"
 #include "MakeAMove/MakeAMovePlayerController.h"
 #include "Components/SkinnedMeshComponent.h"
-
+#include "NiagaraSystem.h"
+#include "NiagaraFunctionLibrary.h"
 
 
 AMakeAMoveCharacter::AMakeAMoveCharacter()
@@ -457,33 +458,118 @@ void AMakeAMoveCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, cons
 
 void AMakeAMoveCharacter::Multicast_Dismember_Implementation(FName BoneName)
 {
-	USkeletalMeshComponent* SkelMeshComp = GetMesh();
-	if (SkelMeshComp == nullptr) return;
+	//USkeletalMeshComponent* SkelMeshComp = GetMesh();
+	//if (SkelMeshComp == nullptr) return;
 
-	// Hide the main bone
-	SkelMeshComp->HideBoneByName(BoneName, EPhysBodyOp::PBO_None);
+	//// Hide the main bone
+	//SkelMeshComp->HideBoneByName(BoneName, EPhysBodyOp::PBO_Term);
 
-	// Get child bones recursively
-	const FReferenceSkeleton& RefSkeleton = SkelMeshComp->SkeletalMesh->GetRefSkeleton();
-	int32 HitBoneIndex = RefSkeleton.FindBoneIndex(BoneName);
-	if (HitBoneIndex == INDEX_NONE) return;
+	//// Get child bones recursively
+	//const FReferenceSkeleton& RefSkeleton = SkelMeshComp->SkeletalMesh->GetRefSkeleton();
+	//int32 HitBoneIndex = RefSkeleton.FindBoneIndex(BoneName);
+	//if (HitBoneIndex == INDEX_NONE) return;
 
-	TArray<int32> ChildBoneIndices;
-	RefSkeleton.GetDirectChildBones(HitBoneIndex, ChildBoneIndices);
+	//FTimerHandle TimerHandle;
 
-	for (int32 ChildIndex : ChildBoneIndices)
-	{
-		FName ChildBoneName = RefSkeleton.GetBoneName(ChildIndex);
-		SkelMeshComp->HideBoneByName(ChildBoneName, EPhysBodyOp::PBO_None);
-	}
+	//TArray<int32> ChildBoneIndices;
+	//RefSkeleton.GetDirectChildBones(HitBoneIndex, ChildBoneIndices);
+
+	//for (int32 ChildIndex : ChildBoneIndices)
+	//{
+	//	FName ChildBoneName = RefSkeleton.GetBoneName(ChildIndex);
+	//	SkelMeshComp->HideBoneByName(ChildBoneName, EPhysBodyOp::PBO_Term);
+	//}
+
+	HideBoneAndChildren(BoneName);
 
 	UE_LOG(LogTemp, Warning, TEXT("Dismembering bone: %s"), *BoneName.ToString());
+}
+
+void AMakeAMoveCharacter::Multicast_DismemberPhysics_Implementation(FName BoneName)
+{
+	if (!GetMesh()) return;
+
+	HideBoneAndChildren(BoneName);
+
+	// 2. Determine limb class
+	TSubclassOf<AActor> LimbClass = nullptr;
+	if (BoneToLimbMeshMap.Contains(BoneName))
+	{
+		LimbClass = BoneToLimbMeshMap[BoneName];
+	}
+	if (!LimbClass) return;
+
+	// 3. Spawn limb at bone socket
+	FTransform BoneTransform = GetMesh()->GetSocketTransform(BoneName);
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AActor* SeveredLimb = GetWorld()->SpawnActor<AActor>(LimbClass, BoneTransform, SpawnParams);
+	if (!SeveredLimb) return;
+
+	// 4. Enable physics
+	if (USkeletalMeshComponent* LimbMesh = Cast<USkeletalMeshComponent>(SeveredLimb->GetComponentByClass(USkeletalMeshComponent::StaticClass())))
+	{
+		LimbMesh->SetSimulatePhysics(true);
+		LimbMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		LimbMesh->SetPhysicsLinearVelocity(GetVelocity());
+		FVector Impulse = FVector(FMath::RandRange(-100.f, 100.f), FMath::RandRange(-100.f, 100.f), -200.f);
+		LimbMesh->AddImpulse(Impulse, NAME_None, true);
+	}
+
+	// 5. Spawn BloodFX
+	if (BloodSprayFX)
+	{
+		FTransform SeveredSocket = GetMesh()->GetSocketTransform(BoneName);
+
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			BloodSprayFX,
+			SeveredSocket.GetLocation(),
+			SeveredSocket.GetRotation().Rotator(),
+			FVector(1.0f) // scale (adjust if you want bigger/smaller spray)
+		);
+	}
+
+}
+
+void AMakeAMoveCharacter::HideBoneAndChildren(FName BoneName)
+{
+	if (!GetMesh()) return;
+
+	USkeletalMesh* SkelMesh = GetMesh()->GetSkeletalMeshAsset();
+	if (!SkelMesh) return;
+
+	const FReferenceSkeleton& RefSkeleton = SkelMesh->GetRefSkeleton();
+
+	// Hide main bone
+	GetMesh()->HideBoneByName(BoneName, EPhysBodyOp::PBO_None);
+
+	int32 BoneIndex = RefSkeleton.FindBoneIndex(BoneName);
+	if (BoneIndex == INDEX_NONE) return;
+
+	TArray<int32> ChildBones;
+	RefSkeleton.GetDirectChildBones(BoneIndex, ChildBones);
+
+	while (ChildBones.Num() > 0)
+	{
+		int32 ChildIndex = ChildBones.Pop();
+		FName ChildBoneName = RefSkeleton.GetBoneName(ChildIndex);
+		GetMesh()->HideBoneByName(ChildBoneName, EPhysBodyOp::PBO_None);
+
+		RefSkeleton.GetDirectChildBones(ChildIndex, ChildBones);
+	}
 }
 
 void AMakeAMoveCharacter::Server_ProcessHit_Implementation(FName HitBoneName)
 {
 	if (Health <= 0.f)
 	{
-		Multicast_Dismember(HitBoneName);
+		Multicast_DismemberPhysics(HitBoneName);
 	}
+}
+
+bool AMakeAMoveCharacter::IsWeaponEquipped()
+{
+	return (CombatComponent && CombatComponent->EquippedWeapon);
 }

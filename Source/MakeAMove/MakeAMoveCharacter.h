@@ -123,8 +123,21 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_Dismember(FName BoneName);
 
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_DismemberPhysics(FName BoneName);
+
 	UFUNCTION(Server, Reliable)
 	void Server_ProcessHit(FName HitBoneName);
+
+	UFUNCTION()
+	void HideBoneAndChildren(FName BoneName);
+
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dismemberment")
+	TSubclassOf<AActor> SeveredLimbClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dismemberment")
+	TMap<FName, TSubclassOf<AActor>> BoneToLimbMeshMap;
 	
 protected:
 
@@ -218,6 +231,12 @@ private:
 	void OnRep_Health();
 
 
+	UPROPERTY(EditAnywhere, Category = "Dismemberment")
+	TMap<FName, USkeletalMesh*> SeveredLimbMeshes;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FX")
+	class UNiagaraSystem* BloodSprayFX;
+
 
 public:
 
@@ -225,5 +244,7 @@ public:
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
 	void SetOverlappingWeapon(AWeapon* Weapon);
+
+	bool IsWeaponEquipped();
 };
 

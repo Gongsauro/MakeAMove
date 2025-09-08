@@ -25,7 +25,7 @@ protected:
 private:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Character", meta = (AllowPrivateAccess = "true"))
-	class AMakeAMoveCharacter* Character;
+	class AMakeAMoveCharacter* MakeAMoveCharacter;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Movement", meta = (AllowPrivateAccess = "true"))
 	float Speed;
@@ -35,4 +35,7 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Movement", meta = (AllowPrivateAccess = "true"))
 	bool bIsAccelerating;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Movement", meta = (AllowPrivateAccess = "true"))
+	bool bWeaponEquipped;
 };

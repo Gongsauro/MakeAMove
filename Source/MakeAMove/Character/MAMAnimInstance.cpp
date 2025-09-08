@@ -9,24 +9,25 @@ void UMAMAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
 
-	Character = Cast<AMakeAMoveCharacter>(TryGetPawnOwner());
+	MakeAMoveCharacter = Cast<AMakeAMoveCharacter>(TryGetPawnOwner());
 }
 
 void UMAMAnimInstance::NativeUpdateAnimation(float DeltaTime)
 {
 	Super::NativeUpdateAnimation(DeltaTime);
 
-	if (Character == nullptr)
+	if (MakeAMoveCharacter == nullptr)
 	{
-		Character = Cast<AMakeAMoveCharacter>(TryGetPawnOwner());
+		MakeAMoveCharacter = Cast<AMakeAMoveCharacter>(TryGetPawnOwner());
 	}
 
-	if (Character == nullptr) return;
+	if (MakeAMoveCharacter == nullptr) return;
 
-	FVector Velocity = Character->GetVelocity();
+	FVector Velocity = MakeAMoveCharacter->GetVelocity();
 	Velocity.Z = 0.f;
 	Speed = Velocity.Size();
 
-	bIsInAir = Character->GetCharacterMovement()->IsFalling();
-	bIsAccelerating = Character->GetCharacterMovement()->GetCurrentAcceleration().Size() > 0.f ? true : false;
+	bIsInAir = MakeAMoveCharacter->GetCharacterMovement()->IsFalling();
+	bIsAccelerating = MakeAMoveCharacter->GetCharacterMovement()->GetCurrentAcceleration().Size() > 0.f ? true : false;
+	bWeaponEquipped = MakeAMoveCharacter->IsWeaponEquipped();
 }

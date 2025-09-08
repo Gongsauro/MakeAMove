@@ -26,7 +26,7 @@ public:
 	UFUNCTION()
 	void EquipWeapon(AWeapon* WeaponToEquip);
 
-	UPROPERTY(BlueprintReadWrite, Category = "Weapon")
+	UPROPERTY(Replicated, BlueprintReadWrite, Category = "Weapon")
 	AWeapon* EquippedWeapon;
 
 	UFUNCTION(BlueprintCallable)
