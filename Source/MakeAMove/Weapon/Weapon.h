@@ -33,6 +33,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	virtual void DisableHitBox();
 
+	UPROPERTY(EditAnywhere)
+	FName SocketToAttach = FName();
+
 protected:
 
 	virtual void BeginPlay() override;
@@ -72,10 +75,10 @@ protected:
 	UPROPERTY()
 	TArray<class AMakeAMoveCharacter*> HitCharactersThisSwing;
 
-private:
-
-	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	USkeletalMeshComponent* WeaponMesh;
+
+private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
 	class USphereComponent* AreaSphere;

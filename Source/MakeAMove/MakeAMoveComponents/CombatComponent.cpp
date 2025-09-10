@@ -36,17 +36,37 @@ void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 
 void UCombatComponent::EquipWeapon(AWeapon* WeaponToEquip)
 {
+	if (WeaponToEquip == nullptr) return;
+
+	if (MakeAMoveCharacter->HasAuthority())
+	{
+		LocalEquipWeapon(WeaponToEquip);
+	}
+	else
+	{
+		Server_EquipWeapon(WeaponToEquip);
+	}
+}
+
+void UCombatComponent::LocalEquipWeapon(AWeapon* WeaponToEquip)
+{
 	if (MakeAMoveCharacter == nullptr || WeaponToEquip == nullptr) return;
 
 	EquippedWeapon = WeaponToEquip;
 	EquippedWeapon->SetWeaponState(EWeaponState::EWS_Equipped);
 
-	const USkeletalMeshSocket* HandSocket = MakeAMoveCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+	//const USkeletalMeshSocket* HandSocket = MakeAMoveCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+	const USkeletalMeshSocket* HandSocket = MakeAMoveCharacter->GetMesh()->GetSocketByName(EquippedWeapon->SocketToAttach);
 	if (HandSocket)
 	{
 		HandSocket->AttachActor(EquippedWeapon, MakeAMoveCharacter->GetMesh());
 	}
 	EquippedWeapon->SetOwner(MakeAMoveCharacter);
+}
+
+void UCombatComponent::Server_EquipWeapon_Implementation(AWeapon* WeaponToEquip)
+{
+	LocalEquipWeapon(WeaponToEquip);
 }
 
 void UCombatComponent::AttackButtonPressed(bool bAttackButtonPressed)

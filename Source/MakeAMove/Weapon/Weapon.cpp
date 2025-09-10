@@ -18,8 +18,11 @@ AWeapon::AWeapon()
 	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+
 	WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WeaponMesh"));
-	SetRootComponent(WeaponMesh);
+	WeaponMesh->SetupAttachment(RootComponent);
+	//SetRootComponent(WeaponMesh);
 	
 	WeaponMesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
 	WeaponMesh->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Ignore);
@@ -62,9 +65,9 @@ void AWeapon::BeginPlay()
 		AreaSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		AreaSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 		AreaSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
-		AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
-		AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
 	}
+	AreaSphere->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::OnSphereOverlap);
+	AreaSphere->OnComponentEndOverlap.AddDynamic(this, &ThisClass::OnSphereEndOverlap);
 
 	if (PickupWidget)
 	{
@@ -149,46 +152,7 @@ void AWeapon::ShowPickupWidget(bool bShowWidget)
 
 void AWeapon::OnHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (bHasHitSomething || !bDamageBoxActive) return;
 
-	AMakeAMoveCharacter* HitCharacter = Cast<AMakeAMoveCharacter>(OtherActor);
-	if (HitCharacter == nullptr || HitCharacter == GetOwner() || HitCharactersThisSwing.Contains(HitCharacter)) return;
-
-	DrawDebugSphere(GetWorld(), OtherComp->GetComponentLocation(), 12.f, 16, FColor::Red, false, 10.f);
-
-	FName* HitBoneName = HitCharacter->HitboxLimbNameMap.Find(OtherComp->GetFName());
-
-	//HitBoneName = HitCharacter->HitboxLimbMap.Find(LimbHitBox);
-
-	if (HitBoneName == nullptr) UE_LOG(LogTemp, Warning, TEXT("HitBoneName is empty"));
-	
-	if (HitBoneName)
-	{
-		bHasHitSomething = true; // first-hit-only
-
-		if (GetOwner()->HasAuthority())
-		{
-			// Server directly calls multicast
-			HitCharacter->Multicast_Dismember(*HitBoneName);
-		}
-		else
-		{
-			// Client tells server via pawn RPC
-			HitCharacter->Server_ProcessHit(*HitBoneName);
-		}
-	}
-	else
-	{
-		// Debug output to confirm mismatch issue
-		UE_LOG(LogTemp, Warning, TEXT("Overlap with %s but no entry in HitboxLimbMap"),
-			*OtherComp->GetName());
-
-		for (auto& Pair : HitCharacter->HitboxLimbNameMap)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Map contains: %s -> %s"),
-				*Pair.Key.ToString(), *Pair.Value.ToString());
-		}
-	}
 }
 
 void AWeapon::EnableHitBox()

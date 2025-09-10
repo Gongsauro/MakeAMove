@@ -32,6 +32,9 @@ public:
 	virtual void PostInitializeComponents() override;
 
 	void PlayAttackMontage();
+	void PlayHitReactMontage();
+	void PlayDeathMontage();
+	void Elim();
 
 	/*
 	* Input
@@ -56,6 +59,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Montages")
 	class UAnimMontage* AttackMontage;
 
+	UPROPERTY(EditAnywhere, Category = "Montages")
+	UAnimMontage* HitReactMontage;
+
+	UPROPERTY(EditAnywhere, Category = "Montages")
+	UAnimMontage* DeathMontage;
+	/* Montages */
+
 	/*
 	* Components
 	*/
@@ -66,7 +76,6 @@ public:
 	/*
 	* HitBoxes
 	*/
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HitBoxes")
 	UBoxComponent* HeadBox;
 
@@ -126,9 +135,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_DismemberPhysics(FName BoneName);
 
-	UFUNCTION(Server, Reliable)
-	void Server_ProcessHit(FName HitBoneName);
-
 	UFUNCTION()
 	void HideBoneAndChildren(FName BoneName);
 
@@ -138,6 +144,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dismemberment")
 	TMap<FName, TSubclassOf<AActor>> BoneToLimbMeshMap;
+
+	UPROPERTY()
+	FName LastHitBone;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	class USoundBase* BladeHitBodySound;
 	
 protected:
 
@@ -174,7 +186,15 @@ protected:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayAttackMontage();
-	/* Input */
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayHitReactMontage();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayDeathMontage();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayHitSound(FVector_NetQuantize Location, AController* InstigatorController);
 
 	void ConstructLimbHitboxes();
 
@@ -238,10 +258,13 @@ private:
 	class UNiagaraSystem* BloodSprayFX;
 
 
+	bool bKilled = false;
+
 public:
 
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	FORCEINLINE bool IsKilled() const { return bKilled; }
 
 	void SetOverlappingWeapon(AWeapon* Weapon);
 

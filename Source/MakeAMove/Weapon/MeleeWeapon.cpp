@@ -27,24 +27,43 @@ void AMeleeWeapon::OnHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent
 		if (AlreadyHitActors.Contains(HitCharacter)) return;
 		AlreadyHitActors.Add(HitCharacter);
 
-		UGameplayStatics::ApplyDamage(HitCharacter, Damage, GetInstigatorController(), this, UDamageType::StaticClass()); // TO DO: create custom damage types to replace StaticClass
+        FName HitBoneName = NAME_None;
+        if (UBoxComponent* LimbHitBox = Cast<UBoxComponent>(OtherComp))
+        {
+            if (FName* MappedBone = HitCharacter->HitboxLimbNameMap.Find(LimbHitBox->GetFName()))
+            {
+                HitBoneName = *MappedBone;
 
-		if (UBoxComponent* LimbHitBox = Cast<UBoxComponent>(OtherComp))
-		{
-			if (FName* HitBone = HitCharacter->HitboxLimbNameMap.Find(LimbHitBox->GetFName()))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Hitbox %s mapped to bone %s"),
-					*LimbHitBox->GetName(),
-					*HitBone->ToString());
+                if (!DismemberableBones.Contains(HitBoneName))
+                {
+                    UE_LOG(LogTemp, Log, TEXT("Hit non-dismember bone: %s (damage only)"), *HitBoneName.ToString());
+                    HitBoneName = NAME_None; // ignore dismemberment
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("Hitbox %s not found in HitboxLimbNameMap!"), *LimbHitBox->GetName());
+            }
+        }
 
-				HitCharacter->Server_ProcessHit(*HitBone);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("Hitbox %s not found in HitboxLimbNameMap!"),
-					*LimbHitBox->GetName());
-			}
-		}
+        if (AMakeAMoveCharacter* OwnerCharacter = Cast<AMakeAMoveCharacter>(GetOwner()))
+        {
+            if (OwnerCharacter->IsLocallyControlled())
+            {
+                if (HitCharacter->BladeHitBodySound)
+                {
+                    // Play sound locally to avoid server-authoritative flow delay
+                    UGameplayStatics::PlaySoundAtLocation(this, HitCharacter->BladeHitBodySound, SweepResult.ImpactPoint);
+                    // TO DO: handle playing different sounds
+                }
+            }
+        }
+
+        // Store the hit bone in the character (only relevant if lethal)
+        HitCharacter->LastHitBone = HitBoneName;
+
+        // Apply damage; server will handle dismemberment if Health <= 0
+        UGameplayStatics::ApplyDamage(HitCharacter, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 	}	
 }
 

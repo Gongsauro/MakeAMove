@@ -16,6 +16,7 @@
 #include "Components/WidgetComponent.h"
 #include <Net/UnrealNetwork.h>
 #include "MakeAMove/Weapon/Weapon.h"
+#include "MakeAMove/Weapon/MeleeWeapon.h"
 #include "MakeAMove/MakeAMoveComponents/CombatComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMeshSocket.h"
@@ -23,6 +24,9 @@
 #include "Components/SkinnedMeshComponent.h"
 #include "NiagaraSystem.h"
 #include "NiagaraFunctionLibrary.h"
+#include "MakeAMove/GameMode/MakeAMoveGameMode.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 
 AMakeAMoveCharacter::AMakeAMoveCharacter()
@@ -69,6 +73,9 @@ AMakeAMoveCharacter::AMakeAMoveCharacter()
 	CombatComponent->SetIsReplicated(true);
 
 	ConstructLimbHitboxes();
+
+	NetUpdateFrequency = 66.f;
+	MinNetUpdateFrequency = 33.f;
 }
 
 void AMakeAMoveCharacter::BeginPlay()
@@ -197,6 +204,42 @@ void AMakeAMoveCharacter::Multicast_PlayAttackMontage_Implementation()
 			}
 		}
 	}
+}
+
+void AMakeAMoveCharacter::PlayHitReactMontage()
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (HitReactMontage && AnimInstance && !AnimInstance->Montage_IsPlaying(HitReactMontage))
+	{
+		AnimInstance->Montage_Play(HitReactMontage);
+		FName SectionName("Front");
+		AnimInstance->Montage_JumpToSection(SectionName);
+	}
+}
+
+void AMakeAMoveCharacter::Multicast_PlayHitReactMontage_Implementation()
+{
+	PlayHitReactMontage();
+}
+
+void AMakeAMoveCharacter::PlayDeathMontage()
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (DeathMontage && AnimInstance && !AnimInstance->Montage_IsPlaying(DeathMontage))
+	{
+		AnimInstance->Montage_Play(DeathMontage);
+	}
+}
+
+void AMakeAMoveCharacter::Multicast_PlayDeathMontage_Implementation()
+{
+	PlayDeathMontage();
+}
+
+void AMakeAMoveCharacter::Elim()
+{
+	//bKilled = true;
+	//Multicast_PlayDeathMontage();
 }
 
 void AMakeAMoveCharacter::DoMove(float Right, float Forward)
@@ -451,35 +494,59 @@ void AMakeAMoveCharacter::ConstructLimbHitboxes()
 
 void AMakeAMoveCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatorController, AActor* DamageCauser)
 {
+	if (!HasAuthority()) return;
+
+	// Apply damage
 	Health = FMath::Clamp(Health - Damage, 0.f, MaxHealth);
 	UpdateHUDHealth();
-	// TO DO: PlayHitReactMontage();
+
+	if (Health > 0.f)
+	{
+		Multicast_PlayHitReactMontage();
+		Multicast_PlayHitSound(GetActorLocation(), InstigatorController);
+	}
+	else if (Health <= 0.f)
+	{
+		FName BoneToDismember = LastHitBone;
+
+		if (AMeleeWeapon* Weapon = Cast<AMeleeWeapon>(DamageCauser))
+		{
+			if (Weapon->DismemberableBones.Contains(BoneToDismember))
+			{
+				Multicast_DismemberPhysics(BoneToDismember);
+			}
+		}
+
+		Multicast_PlayDeathMontage();
+
+		AMakeAMoveGameMode* GameMode = GetWorld()->GetAuthGameMode<AMakeAMoveGameMode>();
+		if (GameMode)
+		{
+			MAMPlayerController = MAMPlayerController == nullptr ? Cast<AMakeAMovePlayerController>(Controller) : MAMPlayerController;
+			AMakeAMovePlayerController* AttackerController = Cast<AMakeAMovePlayerController>(InstigatorController);
+			GameMode->PlayerKilled(this, MAMPlayerController, AttackerController);
+		}
+	}
+}
+
+void AMakeAMoveCharacter::Multicast_PlayHitSound_Implementation(FVector_NetQuantize Location, AController* InstigatorController)
+{
+	//TO DO: function should handle playing different hit sounds
+
+	// if we're the character that attacked, skip the multicast (sound is played locally)
+	if (Controller && Controller == InstigatorController && IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (BladeHitBodySound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, BladeHitBodySound, Location);
+	}
 }
 
 void AMakeAMoveCharacter::Multicast_Dismember_Implementation(FName BoneName)
 {
-	//USkeletalMeshComponent* SkelMeshComp = GetMesh();
-	//if (SkelMeshComp == nullptr) return;
-
-	//// Hide the main bone
-	//SkelMeshComp->HideBoneByName(BoneName, EPhysBodyOp::PBO_Term);
-
-	//// Get child bones recursively
-	//const FReferenceSkeleton& RefSkeleton = SkelMeshComp->SkeletalMesh->GetRefSkeleton();
-	//int32 HitBoneIndex = RefSkeleton.FindBoneIndex(BoneName);
-	//if (HitBoneIndex == INDEX_NONE) return;
-
-	//FTimerHandle TimerHandle;
-
-	//TArray<int32> ChildBoneIndices;
-	//RefSkeleton.GetDirectChildBones(HitBoneIndex, ChildBoneIndices);
-
-	//for (int32 ChildIndex : ChildBoneIndices)
-	//{
-	//	FName ChildBoneName = RefSkeleton.GetBoneName(ChildIndex);
-	//	SkelMeshComp->HideBoneByName(ChildBoneName, EPhysBodyOp::PBO_Term);
-	//}
-
 	HideBoneAndChildren(BoneName);
 
 	UE_LOG(LogTemp, Warning, TEXT("Dismembering bone: %s"), *BoneName.ToString());
@@ -521,13 +588,14 @@ void AMakeAMoveCharacter::Multicast_DismemberPhysics_Implementation(FName BoneNa
 	if (BloodSprayFX)
 	{
 		FTransform SeveredSocket = GetMesh()->GetSocketTransform(BoneName);
+		FVector EmissionVector = SeveredSocket.GetRotation().GetAxisX();
+		FRotator EmissionRotation = EmissionVector.Rotation();
 
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			GetWorld(),
 			BloodSprayFX,
 			SeveredSocket.GetLocation(),
-			SeveredSocket.GetRotation().Rotator(),
-			FVector(1.0f) // scale (adjust if you want bigger/smaller spray)
+			EmissionRotation
 		);
 	}
 
@@ -558,14 +626,6 @@ void AMakeAMoveCharacter::HideBoneAndChildren(FName BoneName)
 		GetMesh()->HideBoneByName(ChildBoneName, EPhysBodyOp::PBO_None);
 
 		RefSkeleton.GetDirectChildBones(ChildIndex, ChildBones);
-	}
-}
-
-void AMakeAMoveCharacter::Server_ProcessHit_Implementation(FName HitBoneName)
-{
-	if (Health <= 0.f)
-	{
-		Multicast_DismemberPhysics(HitBoneName);
 	}
 }
 

@@ -19,6 +19,8 @@ public:
 	virtual void EnableHitBox() override;
 	virtual void DisableHitBox() override;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	TArray<FName> DismemberableBones;
 
 protected:
 
@@ -32,4 +34,8 @@ protected:
 private:
 
 	void ResetHitActors();
+
+
+	
+
 };

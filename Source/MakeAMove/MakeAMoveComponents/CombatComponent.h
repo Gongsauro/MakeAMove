@@ -26,6 +26,11 @@ public:
 	UFUNCTION()
 	void EquipWeapon(AWeapon* WeaponToEquip);
 
+	void LocalEquipWeapon(AWeapon* WeaponToEquip);
+
+	UFUNCTION(Server, Reliable)
+	void Server_EquipWeapon(AWeapon* WeaponToEquip);
+
 	UPROPERTY(Replicated, BlueprintReadWrite, Category = "Weapon")
 	AWeapon* EquippedWeapon;
 
